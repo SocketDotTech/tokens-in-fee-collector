@@ -1,0 +1,16 @@
+{
+  "name": "tokens in FeeCollector",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "token-balances": "tsx get-token-balances.ts"
+  },
+  "dependencies": {
+    "viem": "2.29.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

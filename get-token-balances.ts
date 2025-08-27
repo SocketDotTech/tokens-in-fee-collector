@@ -1,0 +1,560 @@
+#!/usr/bin/env tsx
+
+import { createPublicClient, http } from 'viem';
+import {
+    arbitrum,
+    avalanche,
+    base,
+    bsc,
+    mainnet as ethereum,
+    gnosis,
+    linea,
+    mantle,
+    optimism,
+    polygon,
+    scroll,
+} from 'viem/chains';
+import { Chain, Abi } from 'viem';
+
+// ============================================================================
+// CUSTOM CHAINS
+// ============================================================================
+
+const multicall3Default = {
+    address: '0xca11bde05977b3631167028862be2a173976ca11' as `0x${string}`,
+    blockCreated: 0,
+};
+
+const hyperEvm: Chain = {
+    id: 999,
+    name: 'HyperEVM',
+    nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.hyperblock.cc'] },
+        public: { http: ['https://rpc.hyperblock.cc'] },
+    },
+    blockExplorers: {
+        default: { name: 'HyperEVM Explorer', url: 'https://explorer.hyperblock.cc' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const ink: Chain = {
+    id: 57073,
+    name: 'Ink',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.ink.network'] },
+        public: { http: ['https://rpc.ink.network'] },
+    },
+    blockExplorers: {
+        default: { name: 'Ink Explorer', url: 'https://explorer.ink.network' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const katana: Chain = {
+    id: 747474,
+    name: 'Katana',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.katana.com'] },
+        public: { http: ['https://rpc.katana.com'] },
+    },
+    blockExplorers: {
+        default: { name: 'Katana Explorer', url: 'https://explorer.katana.com' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const plume: Chain = {
+    id: 98866,
+    name: 'Plume',
+    nativeCurrency: { name: 'PLUME', symbol: 'PLUME', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.plume.network'] },
+        public: { http: ['https://rpc.plume.network'] },
+    },
+    blockExplorers: {
+        default: { name: 'Plume Explorer', url: 'https://explorer.plume.network' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const sei: Chain = {
+    id: 1329,
+    name: 'Sei',
+    nativeCurrency: { name: 'SEI', symbol: 'SEI', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.sei.io'] },
+        public: { http: ['https://rpc.sei.io'] },
+    },
+    blockExplorers: {
+        default: { name: 'Sei Explorer', url: 'https://explorer.sei.io' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const soneium: Chain = {
+    id: 1868,
+    name: 'Soneium',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.soneium.io'] },
+        public: { http: ['https://rpc.soneium.io'] },
+    },
+    blockExplorers: {
+        default: { name: 'Soneium Explorer', url: 'https://explorer.soneium.io' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const sonic: Chain = {
+    id: 146,
+    name: 'Sonic',
+    nativeCurrency: { name: 'SONIC', symbol: 'SONIC', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.sonic.network'] },
+        public: { http: ['https://rpc.sonic.network'] },
+    },
+    blockExplorers: {
+        default: { name: 'Sonic Explorer', url: 'https://explorer.sonic.network' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const unichain: Chain = {
+    id: 130,
+    name: 'Unichain',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.unichain.network'] },
+        public: { http: ['https://rpc.unichain.network'] },
+    },
+    blockExplorers: {
+        default: { name: 'Unichain Explorer', url: 'https://explorer.unichain.network' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+const worldchain: Chain = {
+    id: 480,
+    name: 'Worldchain',
+    nativeCurrency: { name: 'WORLD', symbol: 'WORLD', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.worldchain.network'] },
+        public: { http: ['https://rpc.worldchain.network'] },
+    },
+    blockExplorers: {
+        default: { name: 'Worldchain Explorer', url: 'https://explorer.worldchain.network' },
+    },
+    testnet: false,
+    contracts: {
+        multicall3: multicall3Default,
+    },
+};
+
+// ============================================================================
+// VIEM CLIENTS
+// ============================================================================
+
+const rpcUrls: Record<string, string> = {
+    arbitrum: 'https://arb1.arbitrum.io/rpc',
+    avalanche: 'https://api.avax.network/ext/bc/C/rpc',
+    base: 'https://mainnet.base.org',
+    berachain: 'https://rpc.berachain.com',
+    blast: 'https://rpc.blast.io',
+    bsc: 'https://bsc-dataseed.binance.org',
+    ethereum: 'https://rpc.ankr.com/eth',
+    gnosis: 'https://rpc.gnosischain.com',
+    hyperEvm: 'https://rpc.hyperblock.cc',
+    ink: 'https://rpc.ink.network',
+    katana: 'https://rpc.katana.com',
+    linea: 'https://rpc.linea.build',
+    mantle: 'https://rpc.mantle.xyz',
+    mode: 'https://mainnet.mode.network',
+    optimism: 'https://mainnet.optimism.io',
+    plume: 'https://rpc.plume.network',
+    polygon: 'https://polygon-rpc.com',
+    scroll: 'https://rpc.scroll.io',
+    sei: 'https://rpc.sei.io',
+    soneium: 'https://rpc.soneium.io',
+    sonic: 'https://rpc.sonic.network',
+    unichain: 'https://rpc.unichain.network',
+    worldchain: 'https://rpc.worldchain.network',
+};
+
+const chainConfigs: Record<string, any> = {
+    arbitrum,
+    avalanche,
+    base,
+    bsc,
+    ethereum,
+    gnosis,
+    linea,
+    mantle,
+    optimism,
+    polygon,
+    scroll,
+    // Custom chains
+    hyperEvm,
+    ink,
+    katana,
+    plume,
+    sei,
+    soneium,
+    sonic,
+    unichain,
+    worldchain,
+};
+
+const publicClients: Record<string, any> = Object.fromEntries(
+    Object.entries(rpcUrls).map(([network, url]) => [
+        network,
+        createPublicClient({
+            transport: http(url),
+            ...(chainConfigs[network] ? { chain: chainConfigs[network] } : {}),
+        }),
+    ])
+);
+
+// ============================================================================
+// FEE COLLECTOR BALANCES
+// ============================================================================
+
+const feeCollectors = {
+    arbitrum: "0xf791765B58270Eb6DabFf00D9E3bcD8c0C0567a3",
+    avalanche: "0x717bC2FeCad574ec68Cc1eb074abFD93AdaAb754",
+    base: "0x1337B8Af481f3d7d245De35dFfCF30B825C20836",
+    berachain: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    blast: "0x264f55044465A3d8d574D87168F2c2344D1e8c8c",
+    bsc: "0xE8746d664059067FD9337eb81CEdD632Ffa4325e",
+    ethereum: "0xd718CDD6f19BEb30b50AF96659C309eB85B79535",
+    gnosis: "0xDC547D58dBCE66BFd7c35ef7d3394f05C2ec866D",
+    hyperEvm: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    ink: "0x4Dc0edb185a4d32B462977da58bb5B619E88F205",
+    katana: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    linea: "0xdcf83CC9CCDfa57aE757021f9457567F67BABeA9",
+    mantle: "0xdcf83CC9CCDfa57aE757021f9457567F67BABeA9",
+    mode: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    optimism: "0xdb629B83681Db277273808A15be68688CE75a94A",
+    plume: "0x3Cd13488380e6d1e73CE185919Ac14018A78B844",
+    polygon: "0xecD3D10919a77Ef3352A88816Aea379091a0084B",
+    scroll: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    sei: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    soneium: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded",
+    sonic: "0xe772551F88E2c14aEcC880dF6b7CBd574561bf82",
+    unichain: "0x79C7a69499Cf1866734E8D3154200a05aE41c865",
+    worldchain: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded"
+};
+
+// Map network names to Alchemy network identifiers
+const networkMapping = {
+    arbitrum: "arb-mainnet",
+    avalanche: "avax-mainnet",
+    base: "base-mainnet",
+    berachain: "berachain-mainnet",
+    blast: "blast-mainnet",
+    bsc: "bnb-mainnet",
+    ethereum: "eth-mainnet",
+    gnosis: "gnosis-mainnet",
+    hyperEvm: "hyperevm-mainnet",
+    ink: "ink-mainnet",
+    katana: "katana-mainnet",
+    linea: "linea-mainnet",
+    mantle: "mantle-mainnet",
+    mode: "mode-mainnet",
+    optimism: "opt-mainnet",
+    plume: "plume-mainnet",
+    polygon: "polygon-mainnet",
+    scroll: "scroll-mainnet",
+    sei: "sei-mainnet",
+    soneium: "soneium-mainnet",
+    sonic: "sonic-mainnet",
+    unichain: "unichain-mainnet",
+    worldchain: "worldchain-mainnet"
+};
+
+// Helper function to convert hex balance to decimal
+function hexToDecimal(hexString: string): string {
+    if (!hexString || hexString === "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        return "0";
+    }
+
+    return BigInt(hexString).toString();
+}
+
+// Helper function to check if a token has a non-zero balance
+function hasNonZeroBalance(tokenBalance: string): boolean {
+    return tokenBalance !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+}
+
+// Alternative approach: Fetch balances for each network individually
+async function getFeeCollectorBalancesIndividually() {
+    const apiKey = process.env.ALCHEMY_API_KEY;
+    if (!apiKey) {
+        throw new Error('ALCHEMY_API_KEY environment variable is required');
+    }
+
+    const url = `https://api.g.alchemy.com/data/v1/${apiKey}/assets/tokens/balances/by-address`;
+    const results: Record<string, any> = {};
+
+    for (const [networkName, address] of Object.entries(feeCollectors)) {
+        const alchemyNetwork = networkMapping[networkName as keyof typeof networkMapping];
+
+        if (!alchemyNetwork) {
+            console.warn(`No Alchemy network mapping found for ${networkName}`);
+            continue;
+        }
+
+        const options = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                addresses: [{
+                    address: address,
+                    networks: [alchemyNetwork]
+                }]
+            })
+        };
+
+        try {
+            const response = await fetch(url, options);
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error(`Error for ${networkName}:`, data);
+                results[networkName as string] = {
+                    error: data
+                };
+                continue;
+            }
+
+            if (data?.data?.tokens && Array.isArray(data.data.tokens)) {
+                data.data.tokens = data.data.tokens.filter((token: any) => hasNonZeroBalance(token.tokenBalance));
+
+                // Filter and convert balances
+                if (data?.data?.tokens && data.data.tokens.length > 0) {
+                    // Get unique token addresses
+                    const tokenAddresses: string[] = Array.from(new Set(data.data.tokens.map((token: any) => token.tokenAddress)));
+                    // Fetch decimals for each token using viem
+                    let decimalsMap: Record<string, number> = {};
+                    try {
+                        const client = publicClients[networkName];
+                        if (client) {
+                            const ERC20_ABI = [
+                                {
+                                    type: 'function',
+                                    name: 'decimals',
+                                    stateMutability: 'view',
+                                    inputs: [],
+                                    outputs: [{ name: '', type: 'uint8' }],
+                                },
+                            ];
+                            const calls = (tokenAddresses as string[]).map((address: string) => ({
+                                address: address as `0x${string}`,
+                                abi: ERC20_ABI as Abi,
+                                functionName: 'decimals',
+                            }));
+                            const results = await client.multicall({ contracts: calls, allowFailure: true });
+                            decimalsMap = Object.fromEntries(
+                                (tokenAddresses as string[]).map((address: string, i: number) => {
+                                    const result = results[i];
+                                    return [address, result && result.status === 'success' ? Number(result.result) : 18];
+                                })
+                            );
+
+                            data.data.tokens = data.data.tokens
+                                .map((token: any) => ({
+                                    network: token.network,
+                                    tokenAddress: token.tokenAddress,
+                                    tokenBalance: hexToDecimal(token.tokenBalance),
+                                    decimals: decimalsMap[token.tokenAddress] ?? 18
+                                }));
+                        }
+                    } catch (e) {
+                        console.log("error", e);
+                    }
+                }
+            }
+
+            // Store the processed response data for this network
+            results[networkName] = data;
+        } catch (error) {
+            console.error(`Error fetching balances for ${networkName}:`, error);
+            results[networkName] = {
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    return results;
+}
+
+// ============================================================================
+// MULTICALL BALANCES
+// ============================================================================
+
+// ERC20 ABI fragment for balanceOf only, with correct type
+const ERC20_ABI: Abi = [
+    {
+        type: 'function' as const,
+        name: 'balanceOf',
+        stateMutability: 'view',
+        inputs: [{ name: 'account', type: 'address' }],
+        outputs: [{ name: '', type: 'uint256' }],
+    },
+];
+
+// Multicall for a single network
+async function getTokenBalancesForNetwork({
+    network,
+    feeCollector,
+    tokens,
+}: {
+    network: string;
+    feeCollector: string;
+    tokens: Array<{ tokenAddress: string; decimals: number }>;
+}) {
+    const client = publicClients[network];
+    if (!client) throw new Error(`No public client for network: ${network}`);
+    if (!tokens.length) return [];
+
+    // Prepare multicall data (use viem's multicall contract format)
+    const calls = tokens.map((token) => ({
+        address: token.tokenAddress as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [feeCollector],
+    }));
+
+    // Use viem's multicall
+    const multicallResult = await client.multicall({
+        contracts: calls,
+        allowFailure: true,
+    });
+
+    // Map results, filter, convert
+    return tokens
+        .map((token, i) => {
+            const result = multicallResult[i];
+            if (!result || result.status !== 'success') return null;
+            const raw = result.result as string;
+            // Convert to decimal, adjust for decimals
+            const value = BigInt(raw);
+            const adjusted = Number(value) / Math.pow(10, token.decimals);
+            return {
+                ...token,
+                rawBalance: value.toString(),
+                adjustedBalance: adjusted,
+            };
+        })
+        .filter(Boolean);
+}
+
+// ============================================================================
+// MAIN SCRIPT
+// ============================================================================
+
+async function main(): Promise<void> {
+    const args = process.argv.slice(2);
+
+    if (args.length === 0) {
+        console.error('Usage: tsx scripts/get-token-balances.ts <address>');
+        console.error('Example: tsx scripts/get-token-balances.ts 0x1234567890123456789012345678901234567890');
+        process.exit(1);
+    }
+
+    const address = args[0];
+
+    // Basic address validation
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        console.error('Error: Invalid Ethereum address format');
+        console.error('Address must be a 42-character hex string starting with 0x');
+        process.exit(1);
+    }
+
+    try {
+        console.log(`Getting token balances for address: ${address}`);
+
+        // Step 1: Get fee collector balances to extract token lists
+        console.log('Fetching fee collector balances to get token lists...');
+        const feeCollectorBalances = await getFeeCollectorBalancesIndividually();
+
+        // Step 2: Extract tokens from each network and check balances for the provided address
+        console.log('Checking token balances for the provided address...\n');
+
+        for (const [network, data] of Object.entries(feeCollectorBalances)) {
+            if (data.error) {
+                console.log(`❌ ${network}: Error - ${JSON.stringify(data.error)}`);
+                continue;
+            }
+
+            if (!data.data?.tokens || data.data.tokens.length === 0) {
+                console.log(`- ${network}: No tokens found`);
+                continue;
+            }
+
+            // Extract tokens with their decimals
+            const tokens = data.data.tokens.map((token: any) => ({
+                tokenAddress: token.tokenAddress,
+                decimals: token.decimals || 18
+            }));
+
+            try {
+                // Use the existing function to get balances for the provided address
+                const balances = await getTokenBalancesForNetwork({
+                    network,
+                    feeCollector: address,
+                    tokens
+                });
+
+                if (balances.length > 0) {
+                    console.log(`✅ ${network}: Found ${balances.length} tokens`);
+                    balances.forEach((balance: any) => {
+                        if (balance.rawBalance > 0) {
+                            console.log(`   ${balance.tokenAddress}: ${balance.rawBalance}`);
+                        }
+                    });
+                } else {
+                    console.log(`- ${network}: No token balances found for given address`);
+                }
+            } catch (error) {
+                console.log(`❌ ${network}: Error - ${error}`);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error:', error);
+        process.exit(1);
+    }
+}
+
+// Run the script
+if (require.main === module) {
+    main().catch(console.error);
+}
