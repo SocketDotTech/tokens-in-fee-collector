@@ -419,14 +419,31 @@ async function getFeeCollectorBalancesIndividually() {
 // MULTICALL BALANCES
 // ============================================================================
 
-// ERC20 ABI fragment for balanceOf only, with correct type
-const ERC20_ABI: Abi = [
+// FeeCollector ABI fragment for feeMap only, with correct type
+const FEECOLLECTOR_ABI: Abi = [
     {
-        type: 'function' as const,
-        name: 'balanceOf',
-        stateMutability: 'view',
-        inputs: [{ name: 'account', type: 'address' }],
-        outputs: [{ name: '', type: 'uint256' }],
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "feeToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "feeTaker",
+                "type": "address"
+            }
+        ],
+        "name": "feeMap",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
 ];
 
@@ -435,10 +452,12 @@ async function getTokenBalancesForNetwork({
     network,
     feeCollector,
     tokens,
+    address,
 }: {
     network: string;
     feeCollector: string;
     tokens: Array<{ tokenAddress: string; decimals: number }>;
+    address: string;
 }) {
     const client = publicClients[network];
     if (!client) throw new Error(`No public client for network: ${network}`);
@@ -446,10 +465,10 @@ async function getTokenBalancesForNetwork({
 
     // Prepare multicall data (use viem's multicall contract format)
     const calls = tokens.map((token) => ({
-        address: token.tokenAddress as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: 'balanceOf',
-        args: [feeCollector],
+        address: feeCollector as `0x${string}`,
+        abi: FEECOLLECTOR_ABI,
+        functionName: 'feeMap',
+        args: [token.tokenAddress, address],
     }));
 
     // Use viem's multicall
@@ -529,8 +548,9 @@ async function main(): Promise<void> {
                 // Use the existing function to get balances for the provided address
                 const balances = await getTokenBalancesForNetwork({
                     network,
-                    feeCollector: address,
-                    tokens
+                    feeCollector: feeCollectors[network],
+                    tokens,
+                    address,
                 });
 
                 if (balances.length > 0) {
