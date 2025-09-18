@@ -25,6 +25,45 @@ const multicall3Default = {
     blockCreated: 0,
 };
 
+const berachainChain: Chain = {
+    id: 80094,
+    name: 'Berachain',
+    nativeCurrency: { name: 'BERA', symbol: 'BERA', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.berachain.com'] },
+        public: { http: ['https://rpc.berachain.com'] },
+    },
+    blockExplorers: { default: { name: 'Berachain Explorer', url: 'https://explorer.berachain.com' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
+};
+
+const blastChain: Chain = {
+    id: 81457,
+    name: 'Blast',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.blast.io'] },
+        public: { http: ['https://rpc.blast.io'] },
+    },
+    blockExplorers: { default: { name: 'Blast Explorer', url: 'https://blastscan.io' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
+};
+
+const modeChain: Chain = {
+    id: 34443,
+    name: 'Mode',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://mainnet.mode.network'] },
+        public: { http: ['https://mainnet.mode.network'] },
+    },
+    blockExplorers: { default: { name: 'Mode Explorer', url: 'https://explorer.mode.network' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
+};
+
 const hyperEvm: Chain = {
     id: 999,
     name: 'HyperEVM',
@@ -230,6 +269,9 @@ const chainConfigs: Record<string, any> = {
     sonic,
     unichain,
     worldchain,
+    berachain: berachainChain,
+    blast: blastChain,
+    mode: modeChain,
 };
 
 const publicClients: Record<string, any> = Object.fromEntries(
