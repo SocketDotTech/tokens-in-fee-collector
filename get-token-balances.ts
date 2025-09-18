@@ -272,138 +272,105 @@ const feeCollectors = {
     worldchain: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded"
 };
 
-// Map network names to Alchemy network identifiers
-const networkMapping = {
-    arbitrum: "arb-mainnet",
-    avalanche: "avax-mainnet",
-    base: "base-mainnet",
-    berachain: "berachain-mainnet",
-    blast: "blast-mainnet",
-    bsc: "bnb-mainnet",
-    ethereum: "eth-mainnet",
-    gnosis: "gnosis-mainnet",
-    hyperEvm: "hyperevm-mainnet",
-    ink: "ink-mainnet",
-    katana: "katana-mainnet",
-    linea: "linea-mainnet",
-    mantle: "mantle-mainnet",
-    mode: "mode-mainnet",
-    optimism: "opt-mainnet",
-    plume: "plume-mainnet",
-    polygon: "polygon-mainnet",
-    scroll: "scroll-mainnet",
-    sei: "sei-mainnet",
-    soneium: "soneium-mainnet",
-    sonic: "sonic-mainnet",
-    unichain: "unichain-mainnet",
-    worldchain: "worldchain-mainnet"
+// Map network names to Bungee API chain IDs
+const bungeeNetworkMapping = {
+    arbitrum: 42161,
+    avalanche: 43114,
+    base: 8453,
+    berachain: 80094,
+    blast: 81457,
+    bsc: 56,
+    ethereum: 1,
+    gnosis: 100,
+    hyperEvm: 999,
+    ink: 57073,
+    katana: 747474,
+    linea: 59144,
+    mantle: 5000,
+    mode: 34443,
+    optimism: 10,
+    plume: 98866,
+    polygon: 137,
+    scroll: 534352,
+    sei: 1329,
+    soneium: 1868,
+    sonic: 146,
+    unichain: 130,
+    worldchain: 480
 };
-
-// Helper function to convert hex balance to decimal
-function hexToDecimal(hexString: string): string {
-    if (!hexString || hexString === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-        return "0";
-    }
-
-    return BigInt(hexString).toString();
-}
 
 // Helper function to check if a token has a non-zero balance
 function hasNonZeroBalance(tokenBalance: string): boolean {
-    return tokenBalance !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+    return tokenBalance !== "0" && BigInt(tokenBalance) > 0n;
 }
 
-// Alternative approach: Fetch balances for each network individually
+// Fetch balances using Bungee API
 async function getFeeCollectorBalancesIndividually() {
-    const apiKey = process.env.ALCHEMY_API_KEY;
-    if (!apiKey) {
-        throw new Error('ALCHEMY_API_KEY environment variable is required');
-    }
-
-    const url = `https://api.g.alchemy.com/data/v1/${apiKey}/assets/tokens/balances/by-address`;
     const results: Record<string, any> = {};
 
+    let i = 0;
+    const windowMs = 2 * 60 * 1000; // 2 minutes
+    const maxRequests = 5;
     for (const [networkName, address] of Object.entries(feeCollectors)) {
-        const alchemyNetwork = networkMapping[networkName as keyof typeof networkMapping];
+        const chainId = bungeeNetworkMapping[networkName as keyof typeof bungeeNetworkMapping];
 
-        if (!alchemyNetwork) {
-            console.warn(`No Alchemy network mapping found for ${networkName}`);
+        if (!chainId) {
+            console.warn(`No Bungee chain ID mapping found for ${networkName}`);
             continue;
         }
 
-        const options = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                addresses: [{
-                    address: address,
-                    networks: [alchemyNetwork]
-                }]
-            })
-        };
-
+        const url = `https://public-backend.bungee.exchange/api/v1/tokens/list?userAddress=${address}&chainIds=${chainId}&list=full`;
         try {
-            const response = await fetch(url, options);
+            console.log(`Fetching balances for ${networkName} (chain ${chainId})...`);
+            const response = await fetch(url);
             const data = await response.json();
 
             if (!response.ok) {
-                console.error(`Error for ${networkName}:`, data);
-                results[networkName as string] = {
+                console.error(`Error for ${networkName} with status ${response.status}:`, data);
+                results[networkName] = {
                     error: data
                 };
                 continue;
             }
 
-            if (data?.data?.tokens && Array.isArray(data.data.tokens)) {
-                data.data.tokens = data.data.tokens.filter((token: any) => hasNonZeroBalance(token.tokenBalance));
+            if (data?.success && data?.result && data.result[chainId]) {
+                const tokens = data.result[chainId];
 
-                // Filter and convert balances
-                if (data?.data?.tokens && data.data.tokens.length > 0) {
-                    // Get unique token addresses
-                    const tokenAddresses: string[] = Array.from(new Set(data.data.tokens.map((token: any) => token.tokenAddress)));
-                    // Fetch decimals for each token using viem
-                    let decimalsMap: Record<string, number> = {};
-                    try {
-                        const client = publicClients[networkName];
-                        if (client) {
-                            const ERC20_ABI = [
-                                {
-                                    type: 'function',
-                                    name: 'decimals',
-                                    stateMutability: 'view',
-                                    inputs: [],
-                                    outputs: [{ name: '', type: 'uint8' }],
-                                },
-                            ];
-                            const calls = (tokenAddresses as string[]).map((address: string) => ({
-                                address: address as `0x${string}`,
-                                abi: ERC20_ABI as Abi,
-                                functionName: 'decimals',
-                            }));
-                            const results = await client.multicall({ contracts: calls, allowFailure: true });
-                            decimalsMap = Object.fromEntries(
-                                (tokenAddresses as string[]).map((address: string, i: number) => {
-                                    const result = results[i];
-                                    return [address, result && result.status === 'success' ? Number(result.result) : 18];
-                                })
-                            );
+                // Filter tokens with non-zero balances
+                const filteredTokens = tokens.filter((token: any) => {
+                    const balance = token.balance || "0";
+                    return balance !== "0" && BigInt(balance) > 0n;
+                });
 
-                            data.data.tokens = data.data.tokens
-                                .map((token: any) => ({
-                                    network: token.network,
-                                    tokenAddress: token.tokenAddress,
-                                    tokenBalance: hexToDecimal(token.tokenBalance),
-                                    decimals: decimalsMap[token.tokenAddress] ?? 18
-                                }));
-                        }
-                    } catch (e) {
-                        console.log("error", e);
+                // Transform to match expected format
+                const processedTokens = filteredTokens.map((token: any) => ({
+                    network: networkName,
+                    tokenAddress: token.address,
+                    tokenBalance: token.balance,
+                    decimals: token.decimals || 18,
+                    symbol: token.symbol,
+                    name: token.name
+                }));
+
+                results[networkName] = {
+                    data: {
+                        tokens: processedTokens
                     }
-                }
+                };
+            } else {
+                results[networkName] = {
+                    data: {
+                        tokens: []
+                    }
+                };
             }
 
-            // Store the processed response data for this network
-            results[networkName] = data;
+            i++;
+            if (i >= maxRequests) {
+                console.log(`Rate limit reached. Waiting ${Math.ceil(windowMs / 1000)} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, windowMs));
+                i = 0;
+            }
         } catch (error) {
             console.error(`Error fetching balances for ${networkName}:`, error);
             results[networkName] = {
@@ -483,6 +450,12 @@ async function getTokenBalancesForNetwork({
             const result = multicallResult[i];
             if (!result || result.status !== 'success') return null;
             const raw = result.result as string;
+            // Skip zero balances
+            try {
+                if (BigInt(raw) === 0n) return null;
+            } catch (_) {
+                return null;
+            }
             // Convert to decimal, adjust for decimals
             const value = BigInt(raw);
             const adjusted = Number(value) / Math.pow(10, token.decimals);
@@ -520,7 +493,7 @@ async function main(): Promise<void> {
     try {
         console.log(`Getting token balances for address: ${address}`);
 
-        // Step 1: Get fee collector balances to extract token lists
+        // Step 1: Get fee collector balances to extract token lists using Bungee API
         console.log('Fetching fee collector balances to get token lists...');
         const feeCollectorBalances = await getFeeCollectorBalancesIndividually();
 
@@ -556,9 +529,7 @@ async function main(): Promise<void> {
                 if (balances.length > 0) {
                     console.log(`✅ ${network}: Found ${balances.length} tokens`);
                     balances.forEach((balance: any) => {
-                        if (balance.rawBalance > 0) {
-                            console.log(`   ${balance.tokenAddress}: ${balance.rawBalance}`);
-                        }
+                        console.log(`   ${balance.tokenAddress}: ${balance.rawBalance}`);
                     });
                 } else {
                     console.log(`- ${network}: No token balances found for given address`);
