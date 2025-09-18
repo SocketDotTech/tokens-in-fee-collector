@@ -247,7 +247,7 @@ const rpcUrls: Record<string, string> = {
     worldchain: 'https://rpc.worldchain.network',
 };
 
-const chainConfigs: Record<string, Chain> = {
+const chainConfigs: Record<keyof typeof rpcUrls, Chain> = {
     arbitrum,
     avalanche,
     base,
@@ -315,7 +315,7 @@ const feeCollectors = {
 };
 
 // Map network names to Bungee API chain IDs
-const bungeeNetworkMapping = {
+const bungeeNetworkMapping: Partial<Record<keyof typeof feeCollectors, number>> = {
     arbitrum: 42161,
     avalanche: 43114,
     base: 8453,
@@ -339,7 +339,7 @@ const bungeeNetworkMapping = {
     sonic: 146,
     unichain: 130,
     worldchain: 480
-};
+} as const;
 
 // Helper function to check if a token has a non-zero balance
 function hasNonZeroBalance(tokenBalance: string): boolean {
@@ -367,10 +367,11 @@ async function getFeeCollectorBalancesIndividually() {
     const windowMs = 2 * 60 * 1000; // 2 minutes
     const maxRetries = 3;
     for (const [networkName, address] of Object.entries(feeCollectors)) {
-        const chainId = bungeeNetworkMapping[networkName as keyof typeof bungeeNetworkMapping];
+        const chainId = bungeeNetworkMapping[networkName as keyof typeof feeCollectors];
 
-        if (!chainId || typeof chainId !== 'number') {
-            console.warn(`No Bungee chain ID mapping found for ${networkName}`);
+        if (chainId == null || !Number.isInteger(chainId)) {
+            console.warn(`No supported Bungee chainId for ${networkName}`);
+            results[networkName] = { data: { tokens: [] }, note: 'unsupported-by-bungee' };
             continue;
         }
 
