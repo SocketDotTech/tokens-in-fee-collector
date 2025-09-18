@@ -474,9 +474,9 @@ async function getTokenBalancesForNetwork({
     address,
 }: {
     network: string;
-    feeCollector: string;
-    tokens: Array<{ tokenAddress: string; decimals: number }>;
-    address: string;
+    feeCollector: `0x${string}` | string;
+    tokens: Array<{ tokenAddress: `0x${string}`; decimals: number }>;
+    address: `0x${string}`;
 }) {
     const client = publicClients[network];
     if (!client) throw new Error(`No public client for network: ${network}`);
@@ -528,12 +528,12 @@ async function main(): Promise<void> {
     const args = process.argv.slice(2);
 
     if (args.length === 0) {
-        console.error('Usage: tsx scripts/get-token-balances.ts <address>');
-        console.error('Example: tsx scripts/get-token-balances.ts 0x1234567890123456789012345678901234567890');
+        console.error('Usage: tsx get-token-balances.ts <address>');
+        console.error('Example: tsx get-token-balances.ts 0x1234567890123456789012345678901234567890');
         process.exit(1);
     }
 
-    const address = args[0];
+    const address = args[0] as `0x${string}`;
 
     // Basic address validation
     if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
@@ -565,7 +565,7 @@ async function main(): Promise<void> {
 
             // Extract tokens with their decimals
             const tokens = data.data.tokens.map((token: any) => ({
-                tokenAddress: token.tokenAddress,
+                tokenAddress: token.tokenAddress as `0x${string}`,
                 decimals: token.decimals ?? 18
             }));
 
