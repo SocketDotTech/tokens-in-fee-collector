@@ -597,7 +597,11 @@ async function main(): Promise<void> {
     }
 }
 
-// Run the script
-if (require.main === module) {
+// Run the script (CJS + ESM/tsx safe)
+const isDirectRun =
+    (typeof require !== 'undefined' && require.main === module) ||
+    (typeof import.meta !== 'undefined' && `file://${process.argv[1]}` === import.meta.url);
+
+if (isDirectRun) {
     main().catch(console.error);
 }
