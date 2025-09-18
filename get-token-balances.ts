@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { createPublicClient, http, formatUnits } from 'viem';
+import { createPublicClient, http, formatUnits, isAddress } from 'viem';
 import {
     arbitrum,
     avalanche,
@@ -247,7 +247,7 @@ const rpcUrls: Record<string, string> = {
     worldchain: 'https://rpc.worldchain.network',
 };
 
-const chainConfigs: Record<string, any> = {
+const chainConfigs: Record<string, Chain> = {
     arbitrum,
     avalanche,
     base,
@@ -274,7 +274,7 @@ const chainConfigs: Record<string, any> = {
     mode: modeChain,
 };
 
-const publicClients: Record<string, any> = Object.fromEntries(
+const publicClients = Object.fromEntries(
     Object.entries(rpcUrls).map(([network, url]) => [
         network,
         createPublicClient({
@@ -282,7 +282,7 @@ const publicClients: Record<string, any> = Object.fromEntries(
             ...(chainConfigs[network] ? { chain: chainConfigs[network] } : {}),
         }),
     ])
-);
+) as Record<string, ReturnType<typeof createPublicClient>>;
 
 // ============================================================================
 // FEE COLLECTOR BALANCES
@@ -555,9 +555,8 @@ async function main(): Promise<void> {
     const address = args[0] as `0x${string}`;
 
     // Basic address validation
-    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        console.error('Error: Invalid Ethereum address format');
-        console.error('Address must be a 42-character hex string starting with 0x');
+    if (!isAddress(address)) {
+        console.error('Error: Invalid EVM address');
         process.exit(1);
     }
 
