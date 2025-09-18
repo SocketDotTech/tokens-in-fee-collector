@@ -368,7 +368,7 @@ async function getFeeCollectorBalancesIndividually() {
     for (const [networkName, address] of Object.entries(feeCollectors)) {
         const chainId = bungeeNetworkMapping[networkName as keyof typeof bungeeNetworkMapping];
 
-        if (!chainId) {
+        if (!chainId || typeof chainId !== 'number') {
             console.warn(`No Bungee chain ID mapping found for ${networkName}`);
             continue;
         }
@@ -500,21 +500,40 @@ async function getTokenBalancesForNetwork({
     return tokens
         .map((token, i) => {
             const result = multicallResult[i];
-            if (!result || result.status !== 'success') return null;
-            const raw = result.result as string;
-            // Skip zero balances
-            try {
-                if (BigInt(raw) === 0n) return null;
-            } catch (_) {
+            if (!result || result.status !== 'success') {
                 return null;
             }
-            // Convert to decimal, adjust for decimals
-            const value = BigInt(raw);
-            const adjusted = formatUnits(value, token.decimals);
+
+            const raw = result.result as unknown;
+            // Normalize to bigint and skip zeros
+            let value: bigint;
+            if (typeof raw === 'bigint') {
+                value = raw;
+            } else if (typeof raw === 'string') {
+                try {
+                    value = BigInt(raw);
+                } catch {
+                    console.error(`Error converting raw balance to bigint: ${raw}`);
+                    return null;
+                }
+            } else {
+                try {
+                    value = BigInt(raw as any);
+                } catch {
+                    console.error(`Error converting raw balance to bigint: ${raw}`);
+                    return null;
+                }
+            }
+
+            if (value === 0n) {
+                console.error(`Zero balance for token: ${token.tokenAddress}`);
+                return null;
+            }
+
             return {
                 ...token,
                 rawBalance: value.toString(),
-                adjustedBalance: adjusted,
+                adjustedBalance: formatUnits(value, token.decimals),
             };
         })
         .filter(Boolean);
