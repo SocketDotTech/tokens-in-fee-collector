@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, formatUnits } from 'viem';
 import {
     arbitrum,
     avalanche,
@@ -458,7 +458,7 @@ async function getTokenBalancesForNetwork({
             }
             // Convert to decimal, adjust for decimals
             const value = BigInt(raw);
-            const adjusted = Number(value) / Math.pow(10, token.decimals);
+            const adjusted = formatUnits(value, token.decimals);
             return {
                 ...token,
                 rawBalance: value.toString(),
