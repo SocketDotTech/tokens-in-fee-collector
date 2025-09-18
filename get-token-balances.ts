@@ -347,7 +347,7 @@ async function getFeeCollectorBalancesIndividually() {
                     network: networkName,
                     tokenAddress: token.address,
                     tokenBalance: token.balance,
-                    decimals: token.decimals || 18,
+                    decimals: token.decimals ?? 18,
                     symbol: token.symbol,
                     name: token.name
                 }));
@@ -514,7 +514,7 @@ async function main(): Promise<void> {
             // Extract tokens with their decimals
             const tokens = data.data.tokens.map((token: any) => ({
                 tokenAddress: token.tokenAddress,
-                decimals: token.decimals || 18
+                decimals: token.decimals ?? 18
             }));
 
             try {
