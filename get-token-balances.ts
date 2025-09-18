@@ -343,16 +343,28 @@ const bungeeNetworkMapping = {
 
 // Helper function to check if a token has a non-zero balance
 function hasNonZeroBalance(tokenBalance: string): boolean {
-    return tokenBalance !== "0" && BigInt(tokenBalance) > 0n;
+    try {
+        return BigInt(tokenBalance) > 0n;
+    } catch {
+        return false;
+    }
+}
+
+async function fetchWithTimeout(url: string, ms = 12_000): Promise<Response> {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+    } finally {
+        clearTimeout(t);
+    }
 }
 
 // Fetch balances using Bungee API
 async function getFeeCollectorBalancesIndividually() {
     const results: Record<string, any> = {};
 
-    let i = 0;
     const windowMs = 2 * 60 * 1000; // 2 minutes
-    const maxRequests = 5;
     for (const [networkName, address] of Object.entries(feeCollectors)) {
         const chainId = bungeeNetworkMapping[networkName as keyof typeof bungeeNetworkMapping];
 
@@ -364,7 +376,13 @@ async function getFeeCollectorBalancesIndividually() {
         const url = `https://public-backend.bungee.exchange/api/v1/tokens/list?userAddress=${address}&chainIds=${chainId}&list=full`;
         try {
             console.log(`Fetching balances for ${networkName} (chain ${chainId})...`);
-            const response = await fetch(url);
+            const response = await fetchWithTimeout(url);
+            if (response.status === 429) {
+                const retryAfter = Number(response.headers.get('retry-after')) || Math.ceil(windowMs / 1000);
+                console.warn(`Rate limited on ${networkName}. Sleeping ${retryAfter}s...`);
+                await new Promise(r => setTimeout(r, retryAfter * 1000));
+                continue;
+            }
             const data = await response.json();
 
             if (!response.ok) {
@@ -375,19 +393,18 @@ async function getFeeCollectorBalancesIndividually() {
                 continue;
             }
 
-            if (data?.success && data?.result && data.result[chainId]) {
-                const tokens = data.result[chainId];
+            if (data?.success && data?.result && data.result[String(chainId)]) {
+                const tokens = data.result[String(chainId)];
 
                 // Filter tokens with non-zero balances
-                const filteredTokens = tokens.filter((token: any) => {
-                    const balance = token.balance || "0";
-                    return balance !== "0" && BigInt(balance) > 0n;
-                });
+                const filteredTokens = tokens.filter((token: any) =>
+                    hasNonZeroBalance(token.balance ?? "0")
+                );
 
                 // Transform to match expected format
                 const processedTokens = filteredTokens.map((token: any) => ({
                     network: networkName,
-                    tokenAddress: token.address,
+                    tokenAddress: token.address as `0x${string}`,
                     tokenBalance: token.balance,
                     decimals: token.decimals ?? 18,
                     symbol: token.symbol,
@@ -405,13 +422,6 @@ async function getFeeCollectorBalancesIndividually() {
                         tokens: []
                     }
                 };
-            }
-
-            i++;
-            if (i >= maxRequests) {
-                console.log(`Rate limit reached. Waiting ${Math.ceil(windowMs / 1000)} seconds...`);
-                await new Promise(resolve => setTimeout(resolve, windowMs));
-                i = 0;
             }
         } catch (error) {
             console.error(`Error fetching balances for ${networkName}:`, error);
