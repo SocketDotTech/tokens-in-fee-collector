@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, formatUnits, isAddress } from 'viem';
 import {
     arbitrum,
     avalanche,
@@ -23,6 +23,45 @@ import { Chain, Abi } from 'viem';
 const multicall3Default = {
     address: '0xca11bde05977b3631167028862be2a173976ca11' as `0x${string}`,
     blockCreated: 0,
+};
+
+const berachainChain: Chain = {
+    id: 80094,
+    name: 'Berachain',
+    nativeCurrency: { name: 'BERA', symbol: 'BERA', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.berachain.com'] },
+        public: { http: ['https://rpc.berachain.com'] },
+    },
+    blockExplorers: { default: { name: 'Berachain Explorer', url: 'https://explorer.berachain.com' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
+};
+
+const blastChain: Chain = {
+    id: 81457,
+    name: 'Blast',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://rpc.blast.io'] },
+        public: { http: ['https://rpc.blast.io'] },
+    },
+    blockExplorers: { default: { name: 'Blast Explorer', url: 'https://blastscan.io' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
+};
+
+const modeChain: Chain = {
+    id: 34443,
+    name: 'Mode',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://mainnet.mode.network'] },
+        public: { http: ['https://mainnet.mode.network'] },
+    },
+    blockExplorers: { default: { name: 'Mode Explorer', url: 'https://explorer.mode.network' } },
+    testnet: false,
+    contracts: { multicall3: multicall3Default },
 };
 
 const hyperEvm: Chain = {
@@ -208,7 +247,7 @@ const rpcUrls: Record<string, string> = {
     worldchain: 'https://rpc.worldchain.network',
 };
 
-const chainConfigs: Record<string, any> = {
+const chainConfigs: Record<keyof typeof rpcUrls, Chain> = {
     arbitrum,
     avalanche,
     base,
@@ -230,9 +269,12 @@ const chainConfigs: Record<string, any> = {
     sonic,
     unichain,
     worldchain,
+    berachain: berachainChain,
+    blast: blastChain,
+    mode: modeChain,
 };
 
-const publicClients: Record<string, any> = Object.fromEntries(
+const publicClients = Object.fromEntries(
     Object.entries(rpcUrls).map(([network, url]) => [
         network,
         createPublicClient({
@@ -240,7 +282,7 @@ const publicClients: Record<string, any> = Object.fromEntries(
             ...(chainConfigs[network] ? { chain: chainConfigs[network] } : {}),
         }),
     ])
-);
+) as Record<string, ReturnType<typeof createPublicClient>>;
 
 // ============================================================================
 // FEE COLLECTOR BALANCES
@@ -272,138 +314,129 @@ const feeCollectors = {
     worldchain: "0xE12D0CE29B916fbc067f49a8ebC203ffB66E8ded"
 };
 
-// Map network names to Alchemy network identifiers
-const networkMapping = {
-    arbitrum: "arb-mainnet",
-    avalanche: "avax-mainnet",
-    base: "base-mainnet",
-    berachain: "berachain-mainnet",
-    blast: "blast-mainnet",
-    bsc: "bnb-mainnet",
-    ethereum: "eth-mainnet",
-    gnosis: "gnosis-mainnet",
-    hyperEvm: "hyperevm-mainnet",
-    ink: "ink-mainnet",
-    katana: "katana-mainnet",
-    linea: "linea-mainnet",
-    mantle: "mantle-mainnet",
-    mode: "mode-mainnet",
-    optimism: "opt-mainnet",
-    plume: "plume-mainnet",
-    polygon: "polygon-mainnet",
-    scroll: "scroll-mainnet",
-    sei: "sei-mainnet",
-    soneium: "soneium-mainnet",
-    sonic: "sonic-mainnet",
-    unichain: "unichain-mainnet",
-    worldchain: "worldchain-mainnet"
-};
-
-// Helper function to convert hex balance to decimal
-function hexToDecimal(hexString: string): string {
-    if (!hexString || hexString === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-        return "0";
-    }
-
-    return BigInt(hexString).toString();
-}
+// Map network names to Bungee API chain IDs
+const bungeeNetworkMapping: Partial<Record<keyof typeof feeCollectors, number>> = {
+    arbitrum: 42161,
+    avalanche: 43114,
+    base: 8453,
+    berachain: 80094,
+    blast: 81457,
+    bsc: 56,
+    ethereum: 1,
+    gnosis: 100,
+    hyperEvm: 999,
+    ink: 57073,
+    katana: 747474,
+    linea: 59144,
+    mantle: 5000,
+    mode: 34443,
+    optimism: 10,
+    plume: 98866,
+    polygon: 137,
+    scroll: 534352,
+    sei: 1329,
+    soneium: 1868,
+    sonic: 146,
+    unichain: 130,
+    worldchain: 480
+} as const;
 
 // Helper function to check if a token has a non-zero balance
 function hasNonZeroBalance(tokenBalance: string): boolean {
-    return tokenBalance !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+    try {
+        return BigInt(tokenBalance) > 0n;
+    } catch {
+        return false;
+    }
 }
 
-// Alternative approach: Fetch balances for each network individually
-async function getFeeCollectorBalancesIndividually() {
-    const apiKey = process.env.ALCHEMY_API_KEY;
-    if (!apiKey) {
-        throw new Error('ALCHEMY_API_KEY environment variable is required');
+async function fetchWithTimeout(url: string, ms = 12_000): Promise<Response> {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+    } finally {
+        clearTimeout(t);
     }
+}
 
-    const url = `https://api.g.alchemy.com/data/v1/${apiKey}/assets/tokens/balances/by-address`;
+// Fetch balances using Bungee API
+async function getFeeCollectorBalancesIndividually() {
     const results: Record<string, any> = {};
 
+    const windowMs = 2 * 60 * 1000; // 2 minutes
+    const maxRetries = 3;
     for (const [networkName, address] of Object.entries(feeCollectors)) {
-        const alchemyNetwork = networkMapping[networkName as keyof typeof networkMapping];
+        const chainId = bungeeNetworkMapping[networkName as keyof typeof feeCollectors];
 
-        if (!alchemyNetwork) {
-            console.warn(`No Alchemy network mapping found for ${networkName}`);
+        if (chainId == null || !Number.isInteger(chainId)) {
+            console.warn(`No supported Bungee chainId for ${networkName}`);
+            results[networkName] = { data: { tokens: [] }, note: 'unsupported-by-bungee' };
             continue;
         }
 
-        const options = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                addresses: [{
-                    address: address,
-                    networks: [alchemyNetwork]
-                }]
-            })
-        };
-
+        const url = `https://public-backend.bungee.exchange/api/v1/tokens/list?userAddress=${address}&chainIds=${chainId}&list=full`;
         try {
-            const response = await fetch(url, options);
-            const data = await response.json();
+            let attempt = 0;
+            let response: Response | undefined;
+            while (true) {
+                console.log(`Fetching balances for ${networkName} (chain ${chainId})...`);
+                response = await fetchWithTimeout(url);
+                if (response.status !== 429) break;
+                const retryAfter = Number(response.headers.get('retry-after')) || Math.ceil(windowMs / 1000);
+                if (attempt >= maxRetries) {
+                    console.warn(`Rate limited on ${networkName} after ${attempt + 1} attempts. Skipping.`);
+                    results[networkName] = { error: `429 rate limited after ${attempt + 1} attempts` };
+                    break;
+                }
+                console.warn(`Rate limited on ${networkName}. Sleeping ${retryAfter}s before retry...`);
+                await new Promise(r => setTimeout(r, retryAfter * 1000));
+                attempt++;
+            }
 
+            if (!response || response.status === 429) {
+                continue;
+            }
+
+            const data = await response.json();
             if (!response.ok) {
-                console.error(`Error for ${networkName}:`, data);
-                results[networkName as string] = {
+                console.error(`Error for ${networkName} with status ${response.status}:`, data);
+                results[networkName] = {
                     error: data
                 };
                 continue;
             }
 
-            if (data?.data?.tokens && Array.isArray(data.data.tokens)) {
-                data.data.tokens = data.data.tokens.filter((token: any) => hasNonZeroBalance(token.tokenBalance));
+            if (data?.success && data?.result && data.result[String(chainId)]) {
+                const tokens = data.result[String(chainId)];
 
-                // Filter and convert balances
-                if (data?.data?.tokens && data.data.tokens.length > 0) {
-                    // Get unique token addresses
-                    const tokenAddresses: string[] = Array.from(new Set(data.data.tokens.map((token: any) => token.tokenAddress)));
-                    // Fetch decimals for each token using viem
-                    let decimalsMap: Record<string, number> = {};
-                    try {
-                        const client = publicClients[networkName];
-                        if (client) {
-                            const ERC20_ABI = [
-                                {
-                                    type: 'function',
-                                    name: 'decimals',
-                                    stateMutability: 'view',
-                                    inputs: [],
-                                    outputs: [{ name: '', type: 'uint8' }],
-                                },
-                            ];
-                            const calls = (tokenAddresses as string[]).map((address: string) => ({
-                                address: address as `0x${string}`,
-                                abi: ERC20_ABI as Abi,
-                                functionName: 'decimals',
-                            }));
-                            const results = await client.multicall({ contracts: calls, allowFailure: true });
-                            decimalsMap = Object.fromEntries(
-                                (tokenAddresses as string[]).map((address: string, i: number) => {
-                                    const result = results[i];
-                                    return [address, result && result.status === 'success' ? Number(result.result) : 18];
-                                })
-                            );
+                // Filter tokens with non-zero balances
+                const filteredTokens = tokens.filter((token: any) =>
+                    hasNonZeroBalance(token.balance ?? "0")
+                );
 
-                            data.data.tokens = data.data.tokens
-                                .map((token: any) => ({
-                                    network: token.network,
-                                    tokenAddress: token.tokenAddress,
-                                    tokenBalance: hexToDecimal(token.tokenBalance),
-                                    decimals: decimalsMap[token.tokenAddress] ?? 18
-                                }));
-                        }
-                    } catch (e) {
-                        console.log("error", e);
+                // Transform to match expected format
+                const processedTokens = filteredTokens.map((token: any) => ({
+                    network: networkName,
+                    tokenAddress: token.address as `0x${string}`,
+                    tokenBalance: token.balance,
+                    decimals: token.decimals ?? 18,
+                    symbol: token.symbol,
+                    name: token.name
+                }));
+
+                results[networkName] = {
+                    data: {
+                        tokens: processedTokens
                     }
-                }
+                };
+            } else {
+                results[networkName] = {
+                    data: {
+                        tokens: []
+                    }
+                };
             }
-
-            // Store the processed response data for this network
-            results[networkName] = data;
         } catch (error) {
             console.error(`Error fetching balances for ${networkName}:`, error);
             results[networkName] = {
@@ -419,14 +452,31 @@ async function getFeeCollectorBalancesIndividually() {
 // MULTICALL BALANCES
 // ============================================================================
 
-// ERC20 ABI fragment for balanceOf only, with correct type
-const ERC20_ABI: Abi = [
+// FeeCollector ABI fragment for feeMap only, with correct type
+const FEECOLLECTOR_ABI: Abi = [
     {
-        type: 'function' as const,
-        name: 'balanceOf',
-        stateMutability: 'view',
-        inputs: [{ name: 'account', type: 'address' }],
-        outputs: [{ name: '', type: 'uint256' }],
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "feeToken",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "feeTaker",
+                "type": "address"
+            }
+        ],
+        "name": "feeMap",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
 ];
 
@@ -435,10 +485,12 @@ async function getTokenBalancesForNetwork({
     network,
     feeCollector,
     tokens,
+    address,
 }: {
     network: string;
-    feeCollector: string;
-    tokens: Array<{ tokenAddress: string; decimals: number }>;
+    feeCollector: `0x${string}` | string;
+    tokens: Array<{ tokenAddress: `0x${string}`; decimals: number }>;
+    address: `0x${string}`;
 }) {
     const client = publicClients[network];
     if (!client) throw new Error(`No public client for network: ${network}`);
@@ -446,10 +498,10 @@ async function getTokenBalancesForNetwork({
 
     // Prepare multicall data (use viem's multicall contract format)
     const calls = tokens.map((token) => ({
-        address: token.tokenAddress as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: 'balanceOf',
-        args: [feeCollector],
+        address: feeCollector as `0x${string}`,
+        abi: FEECOLLECTOR_ABI,
+        functionName: 'feeMap',
+        args: [token.tokenAddress, address],
     }));
 
     // Use viem's multicall
@@ -462,15 +514,39 @@ async function getTokenBalancesForNetwork({
     return tokens
         .map((token, i) => {
             const result = multicallResult[i];
-            if (!result || result.status !== 'success') return null;
-            const raw = result.result as string;
-            // Convert to decimal, adjust for decimals
-            const value = BigInt(raw);
-            const adjusted = Number(value) / Math.pow(10, token.decimals);
+            if (!result || result.status !== 'success') {
+                return null;
+            }
+
+            const raw = result.result as unknown;
+            // Normalize to bigint and skip zeros
+            let value: bigint;
+            if (typeof raw === 'bigint') {
+                value = raw;
+            } else if (typeof raw === 'string') {
+                try {
+                    value = BigInt(raw);
+                } catch {
+                    console.error(`Error converting raw balance to bigint: ${raw}`);
+                    return null;
+                }
+            } else {
+                try {
+                    value = BigInt(raw as any);
+                } catch {
+                    console.error(`Error converting raw balance to bigint: ${raw}`);
+                    return null;
+                }
+            }
+
+            if (value === 0n) {
+                return null;
+            }
+
             return {
                 ...token,
                 rawBalance: value.toString(),
-                adjustedBalance: adjusted,
+                adjustedBalance: formatUnits(value, token.decimals),
             };
         })
         .filter(Boolean);
@@ -484,24 +560,23 @@ async function main(): Promise<void> {
     const args = process.argv.slice(2);
 
     if (args.length === 0) {
-        console.error('Usage: tsx scripts/get-token-balances.ts <address>');
-        console.error('Example: tsx scripts/get-token-balances.ts 0x1234567890123456789012345678901234567890');
+        console.error('Usage: tsx get-token-balances.ts <address>');
+        console.error('Example: tsx get-token-balances.ts 0x1234567890123456789012345678901234567890');
         process.exit(1);
     }
 
-    const address = args[0];
+    const address = args[0] as `0x${string}`;
 
     // Basic address validation
-    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        console.error('Error: Invalid Ethereum address format');
-        console.error('Address must be a 42-character hex string starting with 0x');
+    if (!isAddress(address)) {
+        console.error('Error: Invalid EVM address');
         process.exit(1);
     }
 
     try {
         console.log(`Getting token balances for address: ${address}`);
 
-        // Step 1: Get fee collector balances to extract token lists
+        // Step 1: Get fee collector balances to extract token lists using Bungee API
         console.log('Fetching fee collector balances to get token lists...');
         const feeCollectorBalances = await getFeeCollectorBalancesIndividually();
 
@@ -521,24 +596,23 @@ async function main(): Promise<void> {
 
             // Extract tokens with their decimals
             const tokens = data.data.tokens.map((token: any) => ({
-                tokenAddress: token.tokenAddress,
-                decimals: token.decimals || 18
+                tokenAddress: token.tokenAddress as `0x${string}`,
+                decimals: token.decimals ?? 18
             }));
 
             try {
                 // Use the existing function to get balances for the provided address
                 const balances = await getTokenBalancesForNetwork({
                     network,
-                    feeCollector: address,
-                    tokens
+                    feeCollector: feeCollectors[network],
+                    tokens,
+                    address,
                 });
 
                 if (balances.length > 0) {
                     console.log(`✅ ${network}: Found ${balances.length} tokens`);
                     balances.forEach((balance: any) => {
-                        if (balance.rawBalance > 0) {
-                            console.log(`   ${balance.tokenAddress}: ${balance.rawBalance}`);
-                        }
+                        console.log(`   ${balance.tokenAddress}: ${balance.rawBalance}`);
                     });
                 } else {
                     console.log(`- ${network}: No token balances found for given address`);
@@ -554,7 +628,11 @@ async function main(): Promise<void> {
     }
 }
 
-// Run the script
-if (require.main === module) {
+// Run the script (CJS + ESM/tsx safe)
+const isDirectRun =
+    (typeof require !== 'undefined' && require.main === module) ||
+    (typeof import.meta !== 'undefined' && `file://${process.argv[1]}` === import.meta.url);
+
+if (isDirectRun) {
     main().catch(console.error);
 }
