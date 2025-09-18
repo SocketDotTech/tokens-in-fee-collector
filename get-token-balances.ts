@@ -365,6 +365,7 @@ async function getFeeCollectorBalancesIndividually() {
     const results: Record<string, any> = {};
 
     const windowMs = 2 * 60 * 1000; // 2 minutes
+    const maxRetries = 3;
     for (const [networkName, address] of Object.entries(feeCollectors)) {
         const chainId = bungeeNetworkMapping[networkName as keyof typeof bungeeNetworkMapping];
 
@@ -375,16 +376,28 @@ async function getFeeCollectorBalancesIndividually() {
 
         const url = `https://public-backend.bungee.exchange/api/v1/tokens/list?userAddress=${address}&chainIds=${chainId}&list=full`;
         try {
-            console.log(`Fetching balances for ${networkName} (chain ${chainId})...`);
-            const response = await fetchWithTimeout(url);
-            if (response.status === 429) {
+            let attempt = 0;
+            let response: Response | undefined;
+            while (true) {
+                console.log(`Fetching balances for ${networkName} (chain ${chainId})...`);
+                response = await fetchWithTimeout(url);
+                if (response.status !== 429) break;
                 const retryAfter = Number(response.headers.get('retry-after')) || Math.ceil(windowMs / 1000);
-                console.warn(`Rate limited on ${networkName}. Sleeping ${retryAfter}s...`);
+                if (attempt >= maxRetries) {
+                    console.warn(`Rate limited on ${networkName} after ${attempt + 1} attempts. Skipping.`);
+                    results[networkName] = { error: `429 rate limited after ${attempt + 1} attempts` };
+                    break;
+                }
+                console.warn(`Rate limited on ${networkName}. Sleeping ${retryAfter}s before retry...`);
                 await new Promise(r => setTimeout(r, retryAfter * 1000));
+                attempt++;
+            }
+
+            if (!response || response.status === 429) {
                 continue;
             }
-            const data = await response.json();
 
+            const data = await response.json();
             if (!response.ok) {
                 console.error(`Error for ${networkName} with status ${response.status}:`, data);
                 results[networkName] = {
@@ -526,7 +539,6 @@ async function getTokenBalancesForNetwork({
             }
 
             if (value === 0n) {
-                console.error(`Zero balance for token: ${token.tokenAddress}`);
                 return null;
             }
 
